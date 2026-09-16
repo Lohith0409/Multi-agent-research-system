@@ -1,33 +1,31 @@
-from langchain.agents import create_agent
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from tools import web_search , scrape_url 
+from tools import web_search, scrape_url
 from dotenv import load_dotenv
+import re
 
 load_dotenv()
 
-#model setup 
-llm = ChatOpenAI(model = "gpt-4o-mini",temperature=0)
+# model setup
+llm = ChatGroq(model="openai/gpt-oss-120b", temperature=0)
 
 
-#1st agent 
-def build_search_agent():
-    return create_agent(
-        model = llm,
-        tools= [web_search]
-    )
-
-#2nd agent 
-
-def build_reader_agent():
-    return create_agent(
-        model = llm,
-        tools = [scrape_url]
-    )
+# 1st step - direct search call (no agent loop needed)
+def run_search(topic: str) -> str:
+    return web_search.invoke({"query": topic})
 
 
-#writer chain 
+# 2nd step - direct scrape call (no agent loop needed)
+def run_reader(search_results: str) -> str:
+    match = re.search(r"URL:\s*(\S+)", search_results)
+    if not match:
+        return "No URL found to scrape."
+    url = match.group(1)
+    return scrape_url.invoke({"url": url})
+
+
+# writer chain
 
 writer_prompt = ChatPromptTemplate.from_messages([
     ("system", "You are an expert research writer. Write clear, structured and insightful reports."),
@@ -49,10 +47,10 @@ Be detailed, factual and professional."""),
 
 writer_chain = writer_prompt | llm | StrOutputParser()
 
-#critic_chain 
+# critic chain
 
 critic_prompt = ChatPromptTemplate.from_messages([
-     ("system", "You are a sharp and constructive research critic. Be honest and specific."),
+    ("system", "You are a sharp and constructive research critic. Be honest and specific."),
     ("human", """Review the research report below and evaluate it strictly.
 
 Report:
@@ -75,4 +73,3 @@ One line verdict:
 ])
 
 critic_chain = critic_prompt | llm | StrOutputParser()
-
